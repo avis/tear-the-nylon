@@ -110,7 +110,7 @@ void signal_setup(void);
 static void 
 callback(int fd, short events, pid_t ppid)
 {   
-   warnxv(4, "Connection TTL arrive, Peace out!");
+   warnxv(4, "Connection TTL arraive, Peace out!");
    kill(ppid, SIGINT);
    return;
 }
