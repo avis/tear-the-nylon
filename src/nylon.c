@@ -106,7 +106,8 @@ main(int argc, char **argv)
 		CONF_SAVE(pidfilenam, conf_get_str("General", "PIDFile"));
 		verbose = conf_get_num("General", "Verbose", 0);
 		use_syslog = conf_get_num("General", "Syslog", 0);
-	        conn_ttl = (int)conf_get_num("General","ConnTimeout", 0);
+	        conn_ttl = conf_get_num("General","ConnTimeout", 0);
+		conn_ttl = atoi(conn_ttl);
 	}
 
 	while ((opt = getopt(argc, argv, GETOPT_STR)) != -1)
@@ -158,7 +159,7 @@ main(int argc, char **argv)
 			CLR(support, NET_SUPPORT_SOCKS5);
 			break;
 		case 't':
-		  conn_ttl = atoi(&optarg);
+		        conn_ttl = atoi(optarg);
 		        break;
 		default:
 			usage();
@@ -181,7 +182,7 @@ main(int argc, char **argv)
 		use_syslog = 1;
 	}
 	event_init();
-	
+
 	if ((cleanup = cleanup_new()) == NULL)
 		errxv(0, 1, "Failed setting up cleanup functionality");
 	print_setup(verbose, use_syslog);

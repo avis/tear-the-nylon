@@ -80,6 +80,12 @@ struct listenq {
 };
 
 struct timeval zero = { 0, 0 };
+struct buffarg { 
+        pid_t                 ppid; 
+        struct event          e;
+        int                   clisock;
+};
+
 static TAILQ_HEAD(listenqh, listenq) listenq_head;
 extern cleanup_t *cleanup;
 static char connstr[512];
@@ -107,12 +113,14 @@ void signal_setup(void);
  */
 
 
-static void 
-callback(int fd, short events, pid_t ppid)
+void 
+callback(int fd, short event, struct buffarg b)
 {   
-   warnxv(4, "Connection TTL arrive, Peace out!");
-   kill(ppid, SIGINT);
-   return;
+   warnxv(4, "Connection TTL has arrived, Peace out!");
+   kill(b.ppid, SIGINT);
+   shutdown(b.clisock,2);
+   close(b.clisock);
+   exit(1);
 }
 
 
@@ -275,30 +283,36 @@ net_accept(int fd, short ev, void *data)
         struct event e;
         time_t rtime;
         pid_t pid, ppid;
-   
+	
+	struct buffarg *barg; 
+	barg->clisock = &clisock;
+
 	switch (fork()) {
 	case -1:
 		warnv(0, "fork()");
 		break;
 	case 0:
-	   
-	        rtime = time();
-	        lq->time_start = localtime(&rtime);
-	        ppid = getpid();
-	        
-	        switch (pid = fork()) {	
-	        case -1:
-		        warnv(1, "fork()");
-		        break;
-	        case 0:
-		        event_init();
-		        zero.tv_sec = lq->conn_ttl;
-		        timeout_set(&e, callback, ppid);
-		        timeout_add(&e, &zero);
-		        event_dispatch();
-		default:
-		        break;
-		}
+	        if(lq->conn_ttl != 0)
+		  {  
+		    rtime = time();
+		    lq->time_start = localtime(&rtime);
+		    ppid = getpid();
+	            barg->ppid = &ppid;
+		    switch (pid = fork()) {	
+		    case -1:
+		      warnv(1, "fork()");
+		      break;
+		    case 0:
+
+		      event_init();
+		      zero.tv_sec = lq->conn_ttl;
+		      timeout_set(&e, callback, &barg);
+		      timeout_add(&e, &zero);
+		      event_dispatch();
+		    default:
+		      break;
+		    }
+		  }
 	   
 	   
 		if ((remsock = net_negotiate(clisock, conn)) == NET_FAIL) {
