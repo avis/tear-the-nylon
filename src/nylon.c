@@ -66,7 +66,7 @@ static void unlink_pidfile_cb(void *);
 int
 main(int argc, char **argv)
 {
-	int opt, foreground, verbose, use_syslog, support;
+	int opt, foreground, verbose, use_syslog, support, conn_ttl;
 	static int servsock;
 	char *bind_ifip, *connect_ifip, *pidfilenam, *allow_hosts, *deny_hosts,
 	    *mirror_addr, *bind_port;
@@ -85,8 +85,8 @@ main(int argc, char **argv)
 	bind_port = mirror_addr = connect_ifip = bind_ifip = NULL;
 	allow_hosts = "127.0.0.1";
 	deny_hosts = "";
-
-#define GETOPT_STR "hvVfsn45p:i:I:P:c:m:a:d:"
+	conn_ttl = 0;
+#define GETOPT_STR "hvVfsn45p:i:I:P:c:m:a:d:t:"
 	while ((opt = getopt(argc, argv, GETOPT_STR)) != -1)
 		if (opt == 'c')
 			conf_path = optarg;
@@ -106,6 +106,7 @@ main(int argc, char **argv)
 		CONF_SAVE(pidfilenam, conf_get_str("General", "PIDFile"));
 		verbose = conf_get_num("General", "Verbose", 0);
 		use_syslog = conf_get_num("General", "Syslog", 0);
+	        conn_ttl = (int)conf_get_num("General","ConnTimeout", 0);
 	}
 
 	while ((opt = getopt(argc, argv, GETOPT_STR)) != -1)
@@ -156,6 +157,9 @@ main(int argc, char **argv)
 		case '5':
 			CLR(support, NET_SUPPORT_SOCKS5);
 			break;
+		case 't':
+		  conn_ttl = atoi(&optarg);
+		        break;
 		default:
 			usage();
 			/* NOTREACHED */
@@ -177,12 +181,11 @@ main(int argc, char **argv)
 		use_syslog = 1;
 	}
 	event_init();
-
+	
 	if ((cleanup = cleanup_new()) == NULL)
 		errxv(0, 1, "Failed setting up cleanup functionality");
 	print_setup(verbose, use_syslog);
-	servsock = net_setup(bind_ifip, connect_ifip, bind_port, mirror_addr,
-	    NULL, support);
+	servsock = net_setup(bind_ifip, connect_ifip, bind_port, mirror_addr, NULL, support, conn_ttl);
 	access_setup(allow_hosts, deny_hosts);
 	signal_setup();
 
@@ -299,7 +302,8 @@ usage(void)
 	    "\t-i <if/ip> Bind to interface or IP address <if/ip>\n"
 	    "\t-I <if/ip> Make outgoing connections on interface or IP address <if/ip>\n"
 	    "\t-P <file>  Use PID file <file>\n"
-	    "\t-c <file>  Use configuration file <file>\n",
+	    "\t-c <file>  Use configuration file <file>\n"
+	    "\t-t <sec>   Set maximum TTL for working connections \n",
 	    __progname, __progname, __progname);
 
 	exit(1);

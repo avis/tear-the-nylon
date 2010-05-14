@@ -15,6 +15,7 @@
 #include <sys/uio.h>
 #include <sys/queue.h>
 #include <sys/time.h>
+#include <signal.h>
 
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -74,9 +75,11 @@ struct listenq {
 	int                   sock;
 	struct conndesc      *conn;
 	TAILQ_ENTRY(listenq)  next;
+        struct tm            *time_start;
+        int                   conn_ttl;
 };
 
-
+struct timeval zero = { 0, 0 };
 static TAILQ_HEAD(listenqh, listenq) listenq_head;
 extern cleanup_t *cleanup;
 static char connstr[512];
@@ -102,6 +105,18 @@ void signal_setup(void);
  * XXX fix mess with err, vs. return ...
  * XXX on failure; indicate which connection (with connstr)
  */
+
+
+static void 
+callback(int fd, short events, pid_t ppid)
+{   
+   warnxv(4, "Connection TTL arraive, Peace out!");
+   kill(ppid, SIGINT);
+   return;
+}
+
+
+
 
 void
 _try_resolve_proxydesc(struct proxydesc *d, int flags)
@@ -131,8 +146,7 @@ _try_resolve_proxydesc(struct proxydesc *d, int flags)
  * Set up listening socket and add event
  */
 int
-net_setup(char *ifip_bind, char *ifip_connect, char *port, char *mirror_addr,
-    char *chain_addr, int support)
+net_setup(char *ifip_bind, char *ifip_connect, char *port, char *mirror_addr, char *chain_addr, int support, int conn_ttl)
 {
 	int servsock = -1, on = 1, error;
 	struct conndesc *conn;
@@ -140,6 +154,7 @@ net_setup(char *ifip_bind, char *ifip_connect, char *port, char *mirror_addr,
 	struct listenq *lq;
 	char xhost[NI_MAXHOST], xport[NI_MAXSERV];
 	static char portstr[NI_MAXSERV];
+
 
 	TAILQ_INIT(&listenq_head);
 
@@ -208,7 +223,7 @@ net_setup(char *ifip_bind, char *ifip_connect, char *port, char *mirror_addr,
 			errxv(0, 1, "Name resolution failed");
 
 		warnxv(0, "Listening on %s:%s", xhost, xport);
-
+		lq->conn_ttl = conn_ttl;
 		event_set(&lq->ev, servsock, EV_READ, net_accept, lq);
 		if (event_add(&lq->ev, NULL) == -1)
 			errv(0, 1, "event_add()");
@@ -245,7 +260,7 @@ net_accept(int fd, short ev, void *data)
 	int clisock, remsock;
 	struct listenq *lq = (struct listenq *)data;
 	struct conndesc *conn = lq->conn;
-
+        
 	if ((clisock = accept(fd, &cliaddr, &addrlen)) == -1) {
 		warnv(0, "accept()");
 		goto out;
@@ -256,12 +271,36 @@ net_accept(int fd, short ev, void *data)
 		    inet_ntoa(((struct sockaddr_in *)&cliaddr)->sin_addr));
 		goto out;
 	}
-
+        
+        struct event e;
+        time_t rtime;
+        pid_t pid, ppid;
+   
 	switch (fork()) {
 	case -1:
 		warnv(0, "fork()");
 		break;
 	case 0:
+	   
+	        rtime = time();
+	        lq->time_start = localtime(&rtime);
+	        ppid = getpid();
+	        
+	        switch (pid = fork()) {	
+	        case -1:
+		        warnv(1, "fork()");
+		        break;
+	        case 0:
+		        event_init();
+		        zero.tv_sec = lq->conn_ttl;
+		        timeout_set(&e, callback, ppid);
+		        timeout_add(&e, &zero);
+		        event_dispatch();
+		default:
+		        break;
+		}
+	   
+	   
 		if ((remsock = net_negotiate(clisock, conn)) == NET_FAIL) {
 			close(clisock);
 			errxv(1, 1, "Negotiation failed");

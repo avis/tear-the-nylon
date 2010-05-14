@@ -163,6 +163,8 @@ socks5_negotiate(int clisock, struct conndesc *conn)
 	case SOCKS5_CD_CONNECT:
 		return (socks5_connect(clisock, &rem_in, &req5, conn));
 	case SOCKS5_CD_BIND:
+	        signal_setup();
+	        event_dispatch();
 		return (socks5_bind(clisock, &rem_in, &req5));
 	case SOCKS5_CD_UDP_ASSOC:
 	default:

@@ -26,6 +26,6 @@ struct conndesc {
 	int              support;
 };
 
-int net_setup(char *, char *, char *, char *, char *, int);
+int net_setup(char *, char *, char *, char *, char *, int, int);
 
 #endif /* NET_H */
